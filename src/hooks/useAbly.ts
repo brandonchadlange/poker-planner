@@ -21,127 +21,130 @@ export function useAbly(
   const gameStateRef = useRef<GameState | null>(null);
   const [connected, setConnected] = useState(false);
   const presenceInitializedRef = useRef(false);
-  const timeoutRefsRef = useRef<NodeJS.Timeout[]>([]);
+  const timeoutRefsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const handleGameEvent = useCallback((event: GameEvent) => {
-    setGameState((prev) => {
-      // If no game state exists yet, we can't process events
-      // The host will initialize the state, and then events will be processed
-      if (!prev) {
-        // If this is a PLAYER_JOINED event and we're the host, we should initialize state
-        if (event.type === "PLAYER_JOINED") {
-          // Check if we should be the host (first player)
-          const channel = channelRef.current;
-          if (channel) {
-            // Request state from host
-            channel.publish("request-state", { playerId });
-          }
-        }
-        return prev;
-      }
-
-      let newState: GameState | null = null;
-
-      switch (event.type) {
-        case "PLAYER_JOINED":
-          // Check if player already exists to prevent duplicates
-          if (prev.players.some((p) => p.id === event.player.id)) {
-            return prev;
-          }
-          newState = {
-            ...prev,
-            players: [...prev.players, event.player],
-          };
-          break;
-        case "PLAYER_LEFT":
-          newState = {
-            ...prev,
-            players: prev.players.filter((p) => p.id !== event.playerId),
-            votes: prev.votes.filter((v) => v.playerId !== event.playerId),
-          };
-          break;
-        case "VOTE_SUBMITTED":
-          newState = {
-            ...prev,
-            votes: [
-              ...prev.votes.filter((v) => v.playerId !== event.vote.playerId),
-              event.vote,
-            ],
-          };
-          break;
-        case "VOTES_REVEALED":
-          newState = {
-            ...prev,
-            votes: event.votes,
-            votesRevealed: true,
-          };
-          break;
-        case "VOTING_STARTED":
-          newState = {
-            ...prev,
-            currentIssue: event.issue,
-            votes: [],
-            votingInProgress: true,
-            votesRevealed: false,
-          };
-          break;
-        case "VOTING_RESET":
-          newState = {
-            ...prev,
-            votes: [],
-            votingInProgress: false,
-            votesRevealed: false,
-          };
-          break;
-        case "ISSUE_ADDED":
-          newState = {
-            ...prev,
-            issues: [...prev.issues, event.issue],
-          };
-          break;
-        case "ISSUE_SELECTED":
-          newState = {
-            ...prev,
-            currentIssue: event.issue,
-            votes: [],
-            votingInProgress: false,
-            votesRevealed: false,
-          };
-          break;
-        case "ISSUE_ESTIMATED":
-          newState = {
-            ...prev,
-            issues: prev.issues.map((issue) =>
-              issue.id === event.issueId
-                ? { ...issue, estimate: event.estimate }
-                : issue
-            ),
-          };
-          break;
-        default:
-          return prev;
-      }
-
-      // Update ref with new state
-      if (newState) {
-        gameStateRef.current = newState;
-        // If we're the host, broadcast the updated game state
-        const channel = channelRef.current;
-        if (channel && newState.hostId === playerId) {
-          // Only publish if channel is attached
-          if (channel.state === "attached" || channel.state === "attaching") {
-            try {
-              channel.publish("game-state", newState);
-            } catch (error) {
-              console.warn("Failed to publish game-state:", error);
+  const handleGameEvent = useCallback(
+    (event: GameEvent) => {
+      setGameState((prev) => {
+        // If no game state exists yet, we can't process events
+        // The host will initialize the state, and then events will be processed
+        if (!prev) {
+          // If this is a PLAYER_JOINED event and we're the host, we should initialize state
+          if (event.type === "PLAYER_JOINED") {
+            // Check if we should be the host (first player)
+            const channel = channelRef.current;
+            if (channel) {
+              // Request state from host
+              channel.publish("request-state", { playerId });
             }
           }
+          return prev;
         }
-        return newState;
-      }
-      return prev;
-    });
-  }, [playerId]);
+
+        let newState: GameState | null = null;
+
+        switch (event.type) {
+          case "PLAYER_JOINED":
+            // Check if player already exists to prevent duplicates
+            if (prev.players.some((p) => p.id === event.player.id)) {
+              return prev;
+            }
+            newState = {
+              ...prev,
+              players: [...prev.players, event.player],
+            };
+            break;
+          case "PLAYER_LEFT":
+            newState = {
+              ...prev,
+              players: prev.players.filter((p) => p.id !== event.playerId),
+              votes: prev.votes.filter((v) => v.playerId !== event.playerId),
+            };
+            break;
+          case "VOTE_SUBMITTED":
+            newState = {
+              ...prev,
+              votes: [
+                ...prev.votes.filter((v) => v.playerId !== event.vote.playerId),
+                event.vote,
+              ],
+            };
+            break;
+          case "VOTES_REVEALED":
+            newState = {
+              ...prev,
+              votes: event.votes,
+              votesRevealed: true,
+            };
+            break;
+          case "VOTING_STARTED":
+            newState = {
+              ...prev,
+              currentIssue: event.issue,
+              votes: [],
+              votingInProgress: true,
+              votesRevealed: false,
+            };
+            break;
+          case "VOTING_RESET":
+            newState = {
+              ...prev,
+              votes: [],
+              votingInProgress: false,
+              votesRevealed: false,
+            };
+            break;
+          case "ISSUE_ADDED":
+            newState = {
+              ...prev,
+              issues: [...prev.issues, event.issue],
+            };
+            break;
+          case "ISSUE_SELECTED":
+            newState = {
+              ...prev,
+              currentIssue: event.issue,
+              votes: [],
+              votingInProgress: false,
+              votesRevealed: false,
+            };
+            break;
+          case "ISSUE_ESTIMATED":
+            newState = {
+              ...prev,
+              issues: prev.issues.map((issue) =>
+                issue.id === event.issueId
+                  ? { ...issue, estimate: event.estimate }
+                  : issue
+              ),
+            };
+            break;
+          default:
+            return prev;
+        }
+
+        // Update ref with new state
+        if (newState) {
+          gameStateRef.current = newState;
+          // If we're the host, broadcast the updated game state
+          const channel = channelRef.current;
+          if (channel && newState.hostId === playerId) {
+            // Only publish if channel is attached
+            if (channel.state === "attached" || channel.state === "attaching") {
+              try {
+                channel.publish("game-state", newState);
+              } catch (error) {
+                console.warn("Failed to publish game-state:", error);
+              }
+            }
+          }
+          return newState;
+        }
+        return prev;
+      });
+    },
+    [playerId]
+  );
 
   useEffect(() => {
     if (!gameId) return;
@@ -164,11 +167,9 @@ export function useAbly(
 
     const gameChannel = client.channels.get(`game:${gameId}`);
 
-    // Attach to the channel
-    gameChannel.attach((err) => {
-      if (err) {
-        console.error("Failed to attach to channel:", err);
-      }
+    // Attach to the channel (channels auto-attach, but we can explicitly attach)
+    gameChannel.attach().catch((err) => {
+      console.error("Failed to attach to channel:", err);
     });
 
     // Subscribe to game state updates
@@ -192,11 +193,17 @@ export function useAbly(
       const currentState = gameStateRef.current;
       if (currentState && currentState.hostId === playerId) {
         // Only publish if channel is attached
-        if (gameChannel.state === "attached" || gameChannel.state === "attaching") {
+        if (
+          gameChannel.state === "attached" ||
+          gameChannel.state === "attaching"
+        ) {
           try {
             gameChannel.publish("game-state", currentState);
           } catch (error) {
-            console.warn("Failed to publish game-state (request-state response):", error);
+            console.warn(
+              "Failed to publish game-state (request-state response):",
+              error
+            );
           }
         }
       }
@@ -207,11 +214,13 @@ export function useAbly(
 
     // Enter presence - this will trigger the "enter" event for all clients
     presence.enter({ playerId, playerName }).then(() => {
-      // After entering presence, if we're the host and have game state, 
+      // After entering presence, if we're the host and have game state,
       // make sure we're in the players list
       const currentState = gameStateRef.current;
       if (currentState && currentState.hostId === playerId) {
-        const hostInPlayers = currentState.players.some(p => p.id === playerId);
+        const hostInPlayers = currentState.players.some(
+          (p) => p.id === playerId
+        );
         if (!hostInPlayers) {
           // Host not in players list, add them
           const updatedState = {
@@ -235,7 +244,10 @@ export function useAbly(
     // Subscribe to presence updates
     presence.subscribe("enter", (member) => {
       const data = member.data as { playerId: string; playerName: string };
-      if (data && (gameChannel.state === "attached" || gameChannel.state === "attaching")) {
+      if (
+        data &&
+        (gameChannel.state === "attached" || gameChannel.state === "attaching")
+      ) {
         try {
           // Broadcast player joined event to all clients
           gameChannel.publish("game-event", {
@@ -254,7 +266,10 @@ export function useAbly(
 
     presence.subscribe("leave", (member) => {
       const data = member.data as { playerId: string; playerName: string };
-      if (data && (gameChannel.state === "attached" || gameChannel.state === "attaching")) {
+      if (
+        data &&
+        (gameChannel.state === "attached" || gameChannel.state === "attaching")
+      ) {
         try {
           // Broadcast player left event to all clients
           gameChannel.publish("game-event", {
@@ -279,7 +294,11 @@ export function useAbly(
                 playerId: string;
                 playerName: string;
               };
-              if (data && (gameChannel.state === "attached" || gameChannel.state === "attaching")) {
+              if (
+                data &&
+                (gameChannel.state === "attached" ||
+                  gameChannel.state === "attaching")
+              ) {
                 try {
                   // Broadcast existing members as player joined events
                   gameChannel.publish("game-event", {
@@ -291,7 +310,10 @@ export function useAbly(
                     },
                   } as GameEvent);
                 } catch (error) {
-                  console.warn("Failed to publish PLAYER_JOINED event (from presence.get):", error);
+                  console.warn(
+                    "Failed to publish PLAYER_JOINED event (from presence.get):",
+                    error
+                  );
                 }
               }
             });
@@ -311,7 +333,10 @@ export function useAbly(
 
     // Request initial game state after a short delay to ensure channel is ready
     const timeout1 = setTimeout(() => {
-      if (gameChannel.state === "attached" || gameChannel.state === "attaching") {
+      if (
+        gameChannel.state === "attached" ||
+        gameChannel.state === "attaching"
+      ) {
         try {
           gameChannel.publish("request-state", { playerId });
         } catch (error) {
@@ -319,10 +344,13 @@ export function useAbly(
         }
       }
     }, 200);
-    
+
     // Also request again after a longer delay in case host wasn't ready
     const timeout2 = setTimeout(() => {
-      if (gameChannel.state === "attached" || gameChannel.state === "attaching") {
+      if (
+        gameChannel.state === "attached" ||
+        gameChannel.state === "attaching"
+      ) {
         try {
           gameChannel.publish("request-state", { playerId });
         } catch (error) {
@@ -330,14 +358,14 @@ export function useAbly(
         }
       }
     }, 1200);
-    
+
     timeoutRefsRef.current.push(timeout1, timeout2);
 
     return () => {
       // Clear all timeouts
-      timeoutRefsRef.current.forEach(timeout => clearTimeout(timeout));
+      timeoutRefsRef.current.forEach((timeout) => clearTimeout(timeout));
       timeoutRefsRef.current = [];
-      
+
       // Clean up presence and channel
       presence.leave().catch(() => {});
       gameChannel.unsubscribe();
