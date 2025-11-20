@@ -146,11 +146,8 @@ export function GameRoom() {
   const [showQRCode, setShowQRCode] = useState(false);
 
   const getGameUrl = () => {
-    return `${
-      window.location.origin
-    }/game/${gameId}?name=${encodeURIComponent(playerName)}${
-      isHost ? "&host=true" : ""
-    }`;
+    // Share URL without name so users can enter their own
+    return `${window.location.origin}/game/${gameId}`;
   };
 
   const handleCopyGameUrl = () => {
