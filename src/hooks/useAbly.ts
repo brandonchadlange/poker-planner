@@ -24,7 +24,20 @@ export function useAbly(
 
   const handleGameEvent = useCallback((event: GameEvent) => {
     setGameState((prev) => {
-      if (!prev) return prev;
+      // If no game state exists yet, we can't process events
+      // The host will initialize the state, and then events will be processed
+      if (!prev) {
+        // If this is a PLAYER_JOINED event and we're the host, we should initialize state
+        if (event.type === "PLAYER_JOINED") {
+          // Check if we should be the host (first player)
+          const channel = channelRef.current;
+          if (channel) {
+            // Request state from host
+            channel.publish("request-state", { playerId });
+          }
+        }
+        return prev;
+      }
 
       let newState: GameState | null = null;
 
@@ -111,11 +124,17 @@ export function useAbly(
       // Update ref with new state
       if (newState) {
         gameStateRef.current = newState;
+        // If we're the host, broadcast the updated game state
+        const channel = channelRef.current;
+        if (channel && newState.hostId === playerId) {
+          // Broadcast updated state immediately for player changes
+          channel.publish("game-state", newState);
+        }
         return newState;
       }
       return prev;
     });
-  }, []);
+  }, [playerId]);
 
   useEffect(() => {
     if (!gameId) return;
@@ -166,31 +185,58 @@ export function useAbly(
     // Use presence to track players
     const presence = gameChannel.presence;
 
-    // Enter presence
-    presence.enter({ playerId, playerName });
+    // Enter presence - this will trigger the "enter" event for all clients
+    presence.enter({ playerId, playerName }).then(() => {
+      // After entering presence, if we're the host and have game state, 
+      // make sure we're in the players list
+      const currentState = gameStateRef.current;
+      if (currentState && currentState.hostId === playerId) {
+        const hostInPlayers = currentState.players.some(p => p.id === playerId);
+        if (!hostInPlayers) {
+          // Host not in players list, add them
+          const updatedState = {
+            ...currentState,
+            players: [
+              ...currentState.players,
+              {
+                id: playerId,
+                name: playerName,
+                isHost: true,
+              },
+            ],
+          };
+          gameStateRef.current = updatedState;
+          setGameState(updatedState);
+          gameChannel.publish("game-state", updatedState);
+        }
+      }
+    });
 
     // Subscribe to presence updates
     presence.subscribe("enter", (member) => {
       const data = member.data as { playerId: string; playerName: string };
-      // Don't add the current player - they're already in the initial state
-      if (data && data.playerId !== playerId) {
-        handleGameEvent({
+      if (data) {
+        // Broadcast player joined event to all clients
+        gameChannel.publish("game-event", {
           type: "PLAYER_JOINED",
           player: {
             id: data.playerId,
             name: data.playerName,
             isHost: false, // Will be determined by game state
           },
-        });
+        } as GameEvent);
       }
     });
 
     presence.subscribe("leave", (member) => {
       const data = member.data as { playerId: string; playerName: string };
-      handleGameEvent({
-        type: "PLAYER_LEFT",
-        playerId: data.playerId,
-      });
+      if (data) {
+        // Broadcast player left event to all clients
+        gameChannel.publish("game-event", {
+          type: "PLAYER_LEFT",
+          playerId: data.playerId,
+        } as GameEvent);
+      }
     });
 
     // Get current members only once on initial connection
@@ -205,15 +251,16 @@ export function useAbly(
                 playerId: string;
                 playerName: string;
               };
-              if (data && data.playerId !== playerId) {
-                handleGameEvent({
+              if (data) {
+                // Broadcast existing members as player joined events
+                gameChannel.publish("game-event", {
                   type: "PLAYER_JOINED",
                   player: {
                     id: data.playerId,
                     name: data.playerName,
                     isHost: false,
                   },
-                });
+                } as GameEvent);
               }
             });
           }

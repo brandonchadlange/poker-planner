@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
+import QRCode from "react-qr-code";
 import { useAbly } from "../hooks/useAbly.js";
 import { VotingCards } from "./VotingCards.js";
 import { VotingResults } from "./VotingResults.js";
@@ -142,16 +143,26 @@ export function GameRoom() {
     navigate("/", { replace: true });
   };
 
-  const handleCopyGameUrl = () => {
-    const gameUrl = `${
+  const [showQRCode, setShowQRCode] = useState(false);
+
+  const getGameUrl = () => {
+    return `${
       window.location.origin
     }/game/${gameId}?name=${encodeURIComponent(playerName)}${
       isHost ? "&host=true" : ""
     }`;
+  };
+
+  const handleCopyGameUrl = () => {
+    const gameUrl = getGameUrl();
     navigator.clipboard.writeText(gameUrl).then(() => {
       // You could add a toast notification here
       alert("Game URL copied to clipboard!");
     });
+  };
+
+  const handleShowQRCode = () => {
+    setShowQRCode(true);
   };
 
   return (
@@ -175,6 +186,13 @@ export function GameRoom() {
                   title="Copy game URL"
                 >
                   📋 Copy URL
+                </button>
+                <button
+                  onClick={handleShowQRCode}
+                  className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
+                  title="Show QR code"
+                >
+                  📱 QR Code
                 </button>
               </div>
             </div>
@@ -342,6 +360,48 @@ export function GameRoom() {
           </div>
         </div>
       </div>
+
+      {/* QR Code Modal */}
+      {showQRCode && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowQRCode(false)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">Scan to Join</h3>
+              <button
+                onClick={() => setShowQRCode(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="bg-white p-4 rounded-lg border-2 border-gray-200 mb-4">
+                <QRCode
+                  value={getGameUrl()}
+                  size={256}
+                  style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                  viewBox="0 0 256 256"
+                />
+              </div>
+              <p className="text-sm text-gray-600 text-center mb-4">
+                Scan this QR code with your phone to join the game
+              </p>
+              <button
+                onClick={handleCopyGameUrl}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+              >
+                Copy URL Instead
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
