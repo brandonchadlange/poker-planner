@@ -65,11 +65,14 @@ export function GameRoom() {
 
   // If no gameId or playerName, redirect to landing page
   useEffect(() => {
+    // Only redirect if we actually don't have the required params
+    // Don't redirect if we're already in the process of loading
     if (!gameId) {
       navigate("/", { replace: true });
       return;
     }
-    if (!urlPlayerName) {
+    // Only redirect if name is truly missing (not just empty string from URL parsing)
+    if (urlPlayerName === null) {
       // Redirect to landing page with gameId so user can enter their name
       navigate(`/?gameId=${gameId}`, { replace: true });
     }
@@ -106,7 +109,8 @@ export function GameRoom() {
       </div>
     );
   }
-  if (!urlPlayerName) {
+  // Only show redirect message if name is truly null (not just empty)
+  if (urlPlayerName === null) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
@@ -121,6 +125,11 @@ export function GameRoom() {
   // For non-host players, wait for game state from host
   // For host, they should have initialized state
   if (!effectiveGameState) {
+    // Don't show loading if we're redirecting (to avoid flash)
+    if (!gameId || urlPlayerName === null) {
+      return null;
+    }
+    
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">

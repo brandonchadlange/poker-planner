@@ -21,6 +21,7 @@ export function useAbly(
   const gameStateRef = useRef<GameState | null>(null);
   const [connected, setConnected] = useState(false);
   const presenceInitializedRef = useRef(false);
+  const timeoutRefsRef = useRef<NodeJS.Timeout[]>([]);
 
   const handleGameEvent = useCallback((event: GameEvent) => {
     setGameState((prev) => {
@@ -127,8 +128,14 @@ export function useAbly(
         // If we're the host, broadcast the updated game state
         const channel = channelRef.current;
         if (channel && newState.hostId === playerId) {
-          // Broadcast updated state immediately for player changes
-          channel.publish("game-state", newState);
+          // Only publish if channel is attached
+          if (channel.state === "attached" || channel.state === "attaching") {
+            try {
+              channel.publish("game-state", newState);
+            } catch (error) {
+              console.warn("Failed to publish game-state:", error);
+            }
+          }
         }
         return newState;
       }
@@ -157,6 +164,13 @@ export function useAbly(
 
     const gameChannel = client.channels.get(`game:${gameId}`);
 
+    // Attach to the channel
+    gameChannel.attach((err) => {
+      if (err) {
+        console.error("Failed to attach to channel:", err);
+      }
+    });
+
     // Subscribe to game state updates
     gameChannel.subscribe("game-state", (message) => {
       const newState = message.data as GameState;
@@ -177,8 +191,14 @@ export function useAbly(
       // and if our playerId matches the hostId
       const currentState = gameStateRef.current;
       if (currentState && currentState.hostId === playerId) {
-        // Publish current game state
-        gameChannel.publish("game-state", currentState);
+        // Only publish if channel is attached
+        if (gameChannel.state === "attached" || gameChannel.state === "attaching") {
+          try {
+            gameChannel.publish("game-state", currentState);
+          } catch (error) {
+            console.warn("Failed to publish game-state (request-state response):", error);
+          }
+        }
       }
     });
 
@@ -215,27 +235,35 @@ export function useAbly(
     // Subscribe to presence updates
     presence.subscribe("enter", (member) => {
       const data = member.data as { playerId: string; playerName: string };
-      if (data) {
-        // Broadcast player joined event to all clients
-        gameChannel.publish("game-event", {
-          type: "PLAYER_JOINED",
-          player: {
-            id: data.playerId,
-            name: data.playerName,
-            isHost: false, // Will be determined by game state
-          },
-        } as GameEvent);
+      if (data && (gameChannel.state === "attached" || gameChannel.state === "attaching")) {
+        try {
+          // Broadcast player joined event to all clients
+          gameChannel.publish("game-event", {
+            type: "PLAYER_JOINED",
+            player: {
+              id: data.playerId,
+              name: data.playerName,
+              isHost: false, // Will be determined by game state
+            },
+          } as GameEvent);
+        } catch (error) {
+          console.warn("Failed to publish PLAYER_JOINED event:", error);
+        }
       }
     });
 
     presence.subscribe("leave", (member) => {
       const data = member.data as { playerId: string; playerName: string };
-      if (data) {
-        // Broadcast player left event to all clients
-        gameChannel.publish("game-event", {
-          type: "PLAYER_LEFT",
-          playerId: data.playerId,
-        } as GameEvent);
+      if (data && (gameChannel.state === "attached" || gameChannel.state === "attaching")) {
+        try {
+          // Broadcast player left event to all clients
+          gameChannel.publish("game-event", {
+            type: "PLAYER_LEFT",
+            playerId: data.playerId,
+          } as GameEvent);
+        } catch (error) {
+          console.warn("Failed to publish PLAYER_LEFT event:", error);
+        }
       }
     });
 
@@ -251,16 +279,20 @@ export function useAbly(
                 playerId: string;
                 playerName: string;
               };
-              if (data) {
-                // Broadcast existing members as player joined events
-                gameChannel.publish("game-event", {
-                  type: "PLAYER_JOINED",
-                  player: {
-                    id: data.playerId,
-                    name: data.playerName,
-                    isHost: false,
-                  },
-                } as GameEvent);
+              if (data && (gameChannel.state === "attached" || gameChannel.state === "attaching")) {
+                try {
+                  // Broadcast existing members as player joined events
+                  gameChannel.publish("game-event", {
+                    type: "PLAYER_JOINED",
+                    player: {
+                      id: data.playerId,
+                      name: data.playerName,
+                      isHost: false,
+                    },
+                  } as GameEvent);
+                } catch (error) {
+                  console.warn("Failed to publish PLAYER_JOINED event (from presence.get):", error);
+                }
               }
             });
           }
@@ -278,19 +310,40 @@ export function useAbly(
     });
 
     // Request initial game state after a short delay to ensure channel is ready
-    setTimeout(() => {
-      gameChannel.publish("request-state", { playerId });
-      // Also request again after a longer delay in case host wasn't ready
-      setTimeout(() => {
-        gameChannel.publish("request-state", { playerId });
-      }, 1000);
+    const timeout1 = setTimeout(() => {
+      if (gameChannel.state === "attached" || gameChannel.state === "attaching") {
+        try {
+          gameChannel.publish("request-state", { playerId });
+        } catch (error) {
+          console.warn("Failed to publish request-state:", error);
+        }
+      }
     }, 200);
+    
+    // Also request again after a longer delay in case host wasn't ready
+    const timeout2 = setTimeout(() => {
+      if (gameChannel.state === "attached" || gameChannel.state === "attaching") {
+        try {
+          gameChannel.publish("request-state", { playerId });
+        } catch (error) {
+          console.warn("Failed to publish request-state (retry):", error);
+        }
+      }
+    }, 1200);
+    
+    timeoutRefsRef.current.push(timeout1, timeout2);
 
     return () => {
-      presence.leave();
+      // Clear all timeouts
+      timeoutRefsRef.current.forEach(timeout => clearTimeout(timeout));
+      timeoutRefsRef.current = [];
+      
+      // Clean up presence and channel
+      presence.leave().catch(() => {});
       gameChannel.unsubscribe();
       client.close();
       setConnected(false);
+      channelRef.current = null;
     };
   }, [gameId, playerId, playerName, handleGameEvent]);
 
@@ -298,6 +351,7 @@ export function useAbly(
     (value: number | string) => {
       const channel = channelRef.current;
       if (!channel || !gameState) return;
+      if (channel.state !== "attached" && channel.state !== "attaching") return;
 
       const vote: Vote = {
         playerId,
@@ -306,10 +360,14 @@ export function useAbly(
         revealed: false,
       };
 
-      channel.publish("game-event", {
-        type: "VOTE_SUBMITTED",
-        vote,
-      } as GameEvent);
+      try {
+        channel.publish("game-event", {
+          type: "VOTE_SUBMITTED",
+          vote,
+        } as GameEvent);
+      } catch (error) {
+        console.warn("Failed to publish vote:", error);
+      }
     },
     [gameState, playerId, playerName]
   );
@@ -317,75 +375,110 @@ export function useAbly(
   const revealVotes = useCallback(() => {
     const channel = channelRef.current;
     if (!channel || !gameState) return;
+    if (channel.state !== "attached" && channel.state !== "attaching") return;
 
     const revealedVotes = gameState.votes.map((vote) => ({
       ...vote,
       revealed: true,
     }));
 
-    channel.publish("game-event", {
-      type: "VOTES_REVEALED",
-      votes: revealedVotes,
-    } as GameEvent);
+    try {
+      channel.publish("game-event", {
+        type: "VOTES_REVEALED",
+        votes: revealedVotes,
+      } as GameEvent);
+    } catch (error) {
+      console.warn("Failed to publish reveal votes:", error);
+    }
   }, [gameState]);
 
   const startVoting = useCallback((issue: Issue) => {
     const channel = channelRef.current;
     if (!channel) return;
+    if (channel.state !== "attached" && channel.state !== "attaching") return;
 
-    channel.publish("game-event", {
-      type: "VOTING_STARTED",
-      issue,
-    } as GameEvent);
+    try {
+      channel.publish("game-event", {
+        type: "VOTING_STARTED",
+        issue,
+      } as GameEvent);
+    } catch (error) {
+      console.warn("Failed to publish start voting:", error);
+    }
   }, []);
 
   const resetVoting = useCallback(() => {
     const channel = channelRef.current;
     if (!channel) return;
+    if (channel.state !== "attached" && channel.state !== "attaching") return;
 
-    channel.publish("game-event", {
-      type: "VOTING_RESET",
-    } as GameEvent);
+    try {
+      channel.publish("game-event", {
+        type: "VOTING_RESET",
+      } as GameEvent);
+    } catch (error) {
+      console.warn("Failed to publish reset voting:", error);
+    }
   }, []);
 
   const addIssue = useCallback((issue: Issue) => {
     const channel = channelRef.current;
     if (!channel) return;
+    if (channel.state !== "attached" && channel.state !== "attaching") return;
 
-    channel.publish("game-event", {
-      type: "ISSUE_ADDED",
-      issue,
-    } as GameEvent);
+    try {
+      channel.publish("game-event", {
+        type: "ISSUE_ADDED",
+        issue,
+      } as GameEvent);
+    } catch (error) {
+      console.warn("Failed to publish add issue:", error);
+    }
   }, []);
 
   const selectIssue = useCallback((issue: Issue) => {
     const channel = channelRef.current;
     if (!channel) return;
+    if (channel.state !== "attached" && channel.state !== "attaching") return;
 
-    channel.publish("game-event", {
-      type: "ISSUE_SELECTED",
-      issue,
-    } as GameEvent);
+    try {
+      channel.publish("game-event", {
+        type: "ISSUE_SELECTED",
+        issue,
+      } as GameEvent);
+    } catch (error) {
+      console.warn("Failed to publish select issue:", error);
+    }
   }, []);
 
   const estimateIssue = useCallback((issueId: string, estimate: number) => {
     const channel = channelRef.current;
     if (!channel) return;
+    if (channel.state !== "attached" && channel.state !== "attaching") return;
 
-    channel.publish("game-event", {
-      type: "ISSUE_ESTIMATED",
-      issueId,
-      estimate,
-    } as GameEvent);
+    try {
+      channel.publish("game-event", {
+        type: "ISSUE_ESTIMATED",
+        issueId,
+        estimate,
+      } as GameEvent);
+    } catch (error) {
+      console.warn("Failed to publish estimate issue:", error);
+    }
   }, []);
 
   const updateGameState = useCallback((newState: GameState) => {
     const channel = channelRef.current;
     if (!channel) return;
+    if (channel.state !== "attached" && channel.state !== "attaching") return;
 
     gameStateRef.current = newState;
     setGameState(newState);
-    channel.publish("game-state", newState);
+    try {
+      channel.publish("game-state", newState);
+    } catch (error) {
+      console.warn("Failed to publish update game state:", error);
+    }
   }, []);
 
   return {
