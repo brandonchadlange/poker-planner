@@ -277,8 +277,14 @@ export function useAbly(
       setConnected(true);
     });
 
-    // Request initial game state
-    gameChannel.publish("request-state", { playerId });
+    // Request initial game state after a short delay to ensure channel is ready
+    setTimeout(() => {
+      gameChannel.publish("request-state", { playerId });
+      // Also request again after a longer delay in case host wasn't ready
+      setTimeout(() => {
+        gameChannel.publish("request-state", { playerId });
+      }, 1000);
+    }, 200);
 
     return () => {
       presence.leave();

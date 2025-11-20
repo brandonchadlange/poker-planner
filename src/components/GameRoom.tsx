@@ -31,6 +31,7 @@ export function GameRoom() {
 
   const playerName = urlPlayerName || "";
   const isHost = urlIsHost;
+  const [connectionTimeout, setConnectionTimeout] = useState(false);
 
   const {
     connected,
@@ -45,6 +46,16 @@ export function GameRoom() {
     FIBONACCI_SEQUENCE,
   } = useAbly(gameId || null, playerId, playerName);
 
+  // Set timeout for connection (10 seconds)
+  useEffect(() => {
+    if (!isHost && !gameState && gameId) {
+      const timer = setTimeout(() => {
+        setConnectionTimeout(true);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [isHost, gameState, gameId]);
+
   // Use gameState from hook as source of truth, with local fallback
   const effectiveGameState =
     gameState ||
@@ -54,9 +65,13 @@ export function GameRoom() {
 
   // If no gameId or playerName, redirect to landing page
   useEffect(() => {
-    if (!gameId || !urlPlayerName) {
-      const redirectPath = gameId ? `/?gameId=${gameId}` : "/";
-      navigate(redirectPath, { replace: true });
+    if (!gameId) {
+      navigate("/", { replace: true });
+      return;
+    }
+    if (!urlPlayerName) {
+      // Redirect to landing page with gameId so user can enter their name
+      navigate(`/?gameId=${gameId}`, { replace: true });
     }
   }, [gameId, urlPlayerName, navigate]);
 
@@ -79,18 +94,59 @@ export function GameRoom() {
     updateGameState,
   ]);
 
-  // If redirecting, show nothing (must be after all hooks)
-  if (!gameId || !urlPlayerName) {
-    return null;
+  // If redirecting, show loading (must be after all hooks)
+  // This check happens after all hooks to avoid React hook rules violations
+  if (!gameId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
+  if (!urlPlayerName) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Redirecting to enter your name...</p>
+        </div>
+      </div>
+    );
   }
 
   // If no game state available, show loading
+  // For non-host players, wait for game state from host
+  // For host, they should have initialized state
   if (!effectiveGameState) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Connecting to game...</p>
+          <p className="text-gray-600">
+            {isHost
+              ? "Initializing game..."
+              : "Connecting to game... Waiting for host."}
+          </p>
+          {!isHost && (
+            <>
+              <p className="text-sm text-gray-500 mt-2">
+                {connectionTimeout
+                  ? "Taking longer than expected. Make sure the host has started the game."
+                  : "If this takes too long, make sure the host has started the game."}
+              </p>
+              {connectionTimeout && (
+                <button
+                  onClick={() => navigate(`/?gameId=${gameId}`)}
+                  className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  Go Back
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
     );
