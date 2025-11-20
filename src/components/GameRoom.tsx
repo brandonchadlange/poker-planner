@@ -32,6 +32,7 @@ export function GameRoom() {
   const playerName = urlPlayerName || "";
   const isHost = urlIsHost;
   const [connectionTimeout, setConnectionTimeout] = useState(false);
+  const [showQRCode, setShowQRCode] = useState(false);
 
   const {
     connected,
@@ -129,7 +130,7 @@ export function GameRoom() {
     if (!gameId || urlPlayerName === null) {
       return null;
     }
-    
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
@@ -207,8 +208,6 @@ export function GameRoom() {
   const handleLeave = () => {
     navigate("/", { replace: true });
   };
-
-  const [showQRCode, setShowQRCode] = useState(false);
 
   const getGameUrl = () => {
     // Share URL without name so users can enter their own

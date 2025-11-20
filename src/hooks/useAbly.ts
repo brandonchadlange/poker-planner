@@ -163,9 +163,42 @@ export function useAbly(
     const client = new Ably.Realtime({
       key: ablyKey,
       clientId: playerId,
+      // Enable automatic reconnection
+      disconnectedRetryTimeout: 3000,
+      suspendedRetryTimeout: 3000,
     });
 
     const gameChannel = client.channels.get(`game:${gameId}`);
+    const presence = gameChannel.presence;
+
+    // Monitor connection state changes
+    client.connection.on("connected", () => {
+      startTransition(() => {
+        setConnected(true);
+      });
+      // Re-enter presence when reconnected
+      presence.enter({ playerId, playerName }).catch((err) => {
+        console.warn("Failed to re-enter presence on reconnect:", err);
+      });
+    });
+
+    client.connection.on("disconnected", () => {
+      startTransition(() => {
+        setConnected(false);
+      });
+    });
+
+    client.connection.on("suspended", () => {
+      startTransition(() => {
+        setConnected(false);
+      });
+    });
+
+    client.connection.on("closed", () => {
+      startTransition(() => {
+        setConnected(false);
+      });
+    });
 
     // Attach to the channel (channels auto-attach, but we can explicitly attach)
     gameChannel.attach().catch((err) => {
@@ -209,8 +242,7 @@ export function useAbly(
       }
     });
 
-    // Use presence to track players
-    const presence = gameChannel.presence;
+    // Use presence to track players (already defined above)
 
     // Enter presence - this will trigger the "enter" event for all clients
     presence.enter({ playerId, playerName }).then(() => {
