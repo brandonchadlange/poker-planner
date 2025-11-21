@@ -8,7 +8,22 @@ import {
 import * as Ably from "ably";
 import type { GameState, GameEvent, Vote, Issue } from "../types";
 
-const FIBONACCI_SEQUENCE = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, "?", "☕"];
+const FIBONACCI_SEQUENCE = [
+  0,
+  0.5,
+  1,
+  2,
+  3,
+  5,
+  8,
+  13,
+  21,
+  34,
+  55,
+  89,
+  "?",
+  "☕",
+];
 
 export function useAbly(
   gameId: string | null,

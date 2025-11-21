@@ -178,6 +178,13 @@ export function GameRoom() {
 
   const handleResetVoting = () => {
     resetVoting();
+    // Automatically start voting again with the current issue
+    if (effectiveGameState.currentIssue) {
+      // Small delay to ensure reset completes first
+      setTimeout(() => {
+        startVoting(effectiveGameState.currentIssue!);
+      }, 100);
+    }
   };
 
   const handleEstimateIssue = () => {
