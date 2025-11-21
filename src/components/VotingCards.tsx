@@ -12,7 +12,7 @@ export function VotingCards({
   votesRevealed,
 }: VotingCardsProps) {
   return (
-    <div className="flex flex-wrap gap-3 justify-center">
+    <div className="flex flex-wrap gap-2 justify-center">
       {sequence.map((value, index) => {
         const isSelected = currentVote === value;
         const displayValue =
@@ -24,16 +24,16 @@ export function VotingCards({
             onClick={() => !votesRevealed && onVote(value)}
             disabled={votesRevealed}
             className={`
-              w-20 h-28 rounded-lg font-bold text-xl transition-all transform
+              w-16 h-20 rounded-md font-semibold text-lg transition-all
               ${
                 isSelected
-                  ? "bg-indigo-600 text-white scale-110 shadow-lg ring-4 ring-indigo-300"
-                  : "bg-white text-gray-800 hover:bg-indigo-50 hover:scale-105 shadow-md"
+                  ? "bg-neutral-900 text-white border-2 border-neutral-900 shadow-md"
+                  : "bg-white text-neutral-900 border border-neutral-200 hover:border-neutral-900 hover:bg-neutral-50 shadow-sm"
               }
               ${
                 votesRevealed
                   ? "opacity-50 cursor-not-allowed"
-                  : "cursor-pointer hover:shadow-lg"
+                  : "cursor-pointer"
               }
             `}
           >

@@ -27,14 +27,13 @@ export function useAbly(
     (event: GameEvent) => {
       setGameState((prev) => {
         // If no game state exists yet, we can't process events
-        // The host will initialize the state, and then events will be processed
+        // Any player can initialize the state, and then events will be processed
         if (!prev) {
-          // If this is a PLAYER_JOINED event and we're the host, we should initialize state
+          // If this is a PLAYER_JOINED event, request state from other players
           if (event.type === "PLAYER_JOINED") {
-            // Check if we should be the host (first player)
             const channel = channelRef.current;
             if (channel) {
-              // Request state from host
+              // Request state from any player who has it
               channel.publish("request-state", { playerId });
             }
           }
@@ -126,9 +125,9 @@ export function useAbly(
         // Update ref with new state
         if (newState) {
           gameStateRef.current = newState;
-          // If we're the host, broadcast the updated game state
+          // Broadcast the updated game state to all players
           const channel = channelRef.current;
-          if (channel && newState.hostId === playerId) {
+          if (channel) {
             // Only publish if channel is attached
             if (channel.state === "attached" || channel.state === "attaching") {
               try {
@@ -218,13 +217,12 @@ export function useAbly(
       handleGameEvent(event);
     });
 
-    // Subscribe to state requests - host should respond with current state
+    // Subscribe to state requests - any player with state should respond
     gameChannel.subscribe("request-state", () => {
-      // Only the host should respond to state requests
-      // Check if we're the host by checking if we have game state
-      // and if our playerId matches the hostId
+      // Any player with game state can respond to state requests
+      // This ensures state persists even if players leave/refresh
       const currentState = gameStateRef.current;
-      if (currentState && currentState.hostId === playerId) {
+      if (currentState) {
         // Only publish if channel is attached
         if (
           gameChannel.state === "attached" ||
@@ -246,15 +244,14 @@ export function useAbly(
 
     // Enter presence - this will trigger the "enter" event for all clients
     presence.enter({ playerId, playerName }).then(() => {
-      // After entering presence, if we're the host and have game state,
-      // make sure we're in the players list
+      // After entering presence, if we have game state, make sure we're in the players list
       const currentState = gameStateRef.current;
-      if (currentState && currentState.hostId === playerId) {
-        const hostInPlayers = currentState.players.some(
+      if (currentState) {
+        const playerInList = currentState.players.some(
           (p) => p.id === playerId
         );
-        if (!hostInPlayers) {
-          // Host not in players list, add them
+        if (!playerInList) {
+          // Player not in players list, add them
           const updatedState = {
             ...currentState,
             players: [
@@ -262,13 +259,24 @@ export function useAbly(
               {
                 id: playerId,
                 name: playerName,
-                isHost: true,
               },
             ],
           };
           gameStateRef.current = updatedState;
           setGameState(updatedState);
-          gameChannel.publish("game-state", updatedState);
+          if (
+            gameChannel.state === "attached" ||
+            gameChannel.state === "attaching"
+          ) {
+            try {
+              gameChannel.publish("game-state", updatedState);
+            } catch (error) {
+              console.warn(
+                "Failed to publish game-state (presence enter):",
+                error
+              );
+            }
+          }
         }
       }
     });
@@ -287,7 +295,6 @@ export function useAbly(
             player: {
               id: data.playerId,
               name: data.playerName,
-              isHost: false, // Will be determined by game state
             },
           } as GameEvent);
         } catch (error) {
@@ -338,7 +345,6 @@ export function useAbly(
                     player: {
                       id: data.playerId,
                       name: data.playerName,
-                      isHost: false,
                     },
                   } as GameEvent);
                 } catch (error) {
@@ -377,7 +383,7 @@ export function useAbly(
       }
     }, 200);
 
-    // Also request again after a longer delay in case host wasn't ready
+    // Also request again after a longer delay in case other players weren't ready
     const timeout2 = setTimeout(() => {
       if (
         gameChannel.state === "attached" ||

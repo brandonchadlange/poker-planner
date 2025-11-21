@@ -10,17 +10,15 @@ export function generatePlayerId(): string {
 
 export function createInitialGameState(
   gameId: string,
-  hostId: string,
-  hostName: string
+  playerId: string,
+  playerName: string
 ): GameState {
   return {
     gameId,
-    hostId,
     players: [
       {
-        id: hostId,
-        name: hostName,
-        isHost: true,
+        id: playerId,
+        name: playerName,
       },
     ],
     currentIssue: null,

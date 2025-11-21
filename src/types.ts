@@ -1,7 +1,6 @@
 export interface Player {
   id: string;
   name: string;
-  isHost: boolean;
 }
 
 export interface Vote {
@@ -20,7 +19,6 @@ export interface Issue {
 
 export interface GameState {
   gameId: string;
-  hostId: string;
   players: Player[];
   currentIssue: Issue | null;
   votes: Vote[];
