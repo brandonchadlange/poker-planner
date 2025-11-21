@@ -299,6 +299,10 @@ export function useAbly(
     // Subscribe to presence updates
     presence.subscribe("enter", (member) => {
       const data = member.data as { playerId: string; playerName: string };
+      // Skip events for the current player - we handle our own presence separately
+      if (data && data.playerId === playerId) {
+        return;
+      }
       if (
         data &&
         (gameChannel.state === "attached" || gameChannel.state === "attaching")
@@ -320,6 +324,10 @@ export function useAbly(
 
     presence.subscribe("leave", (member) => {
       const data = member.data as { playerId: string; playerName: string };
+      // Skip events for the current player - we handle our own cleanup separately
+      if (data && data.playerId === playerId) {
+        return;
+      }
       if (
         data &&
         (gameChannel.state === "attached" || gameChannel.state === "attaching")
@@ -348,6 +356,10 @@ export function useAbly(
                 playerId: string;
                 playerName: string;
               };
+              // Skip the current player - we handle our own presence separately
+              if (data && data.playerId === playerId) {
+                return;
+              }
               if (
                 data &&
                 (gameChannel.state === "attached" ||
